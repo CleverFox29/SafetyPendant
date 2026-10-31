@@ -7,8 +7,8 @@
 #define BUZZER_PIN 6
 #define SDA_PIN 0
 #define SCL_PIN 1
-#define DURESS_BUTTON 1
-#define SAFE_BUTTON 12
+#define DURESS_BUTTON 3
+#define SAFE_BUTTON 4
 
 #define SERVICE_UUID "19b10000-e8f2-537e-4f6c-d104768a1214"
 #define CHARACTERISTIC_UUID "19b10001-e8f2-537e-4f6c-d104768a1214"
@@ -26,7 +26,7 @@ typedef enum { STATE_IDLE,
                STATE_ENROLL_SAFE,
                STATE_ENROLL_DURESS } DeviceState;
 
-HardwareSerial fpSerial(1);
+
 
 BLEServer* pServer = nullptr;
 BLECharacteristic* pCharacteristic = nullptr;
@@ -52,7 +52,7 @@ void triggerSOS() {
 
   state = STATE_SOS;
   sendBLE("E");
-  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(BUZZER_PIN, HIGH);
   Serial.println("[SOS] SOS triggered! Buzzer on.");
 }
 
@@ -100,32 +100,24 @@ class CharCallbacks : public BLECharacteristicCallbacks {
       digitalWrite(BUZZER_PIN, LOW);
       sendBLE("D");
       Serial.println("[STATE] Device DISARMED");
-    } else if (val == "ENROLL_NORMAL" && state == STATE_IDLE) {
-      state = STATE_ENROLL_SAFE;
-      Serial.println("Enroll normal finger requested.");
-    } else if (val == "ENROLL_DURESS" && state == STATE_IDLE) {
-      state = STATE_ENROLL_DURESS;
-      Serial.println("Enroll duress finger requested.");
-    }
+    } 
   }
 };
 
 void setup() {
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(SAFE_BUTTON, INPUT_PULLDOWN);
+  pinMode(DURESS_BUTTON, INPUT_PULLDOWN);
+  pinMode(8, OUTPUT);
 
   Serial.begin(115200);
+  digitalWrite(8, LOW);
   unsigned long t = millis();
-  while (!Serial && millis() - t < 3000)
-    ;
+  digitalWrite(8, HIGH);
+  
+  while (!Serial && millis() - t < 3000);
 
   Serial.println("Commands: E=enroll safe, F=enroll duress, A=arm, D=disarm, P=print accel");
-
-  pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
-
-
-
-
-
 
 
 
@@ -212,23 +204,24 @@ void loop() {
     }
 
     if (elapsed >= ARMED_TIMEOUT) {
-      Serial.println("[TIMEOUT] No finger detected in time.");
+      Serial.println("[TIMEOUT] No button has been pressed in time.");
       triggerSOS();
       return;
     }
 
     if (digitalRead(DURESS_BUTTON)) {
-      Serial.println("[SAFE] Primary finger. Timer reset.");
+        Serial.println("[DURESS] Duress finger. Silent SOS sent.");
+      sendBLE("E");
+      state = STATE_SOS;
+
+      
+    } else if (digitalRead(SAFE_BUTTON)) {
+      Serial.println("[SAFE] Safe button pressed. Timer reset.");
       resetTimer();
       digitalWrite(BUZZER_PIN, HIGH);
       delay(600);
       digitalWrite(BUZZER_PIN, LOW);
-    } else if (finger.fingerID == ID_DURESS) {
-      Serial.println("[DURESS] Duress finger. Silent SOS sent.");
-      sendBLE("E");
-      state = STATE_SOS;
     }
   }
 
-  delay(10);
 }
